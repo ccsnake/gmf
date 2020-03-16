@@ -52,6 +52,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"syscall"
 	"time"
@@ -195,6 +196,21 @@ func NewInputCtx(filename string) (*FmtCtx, error) {
 	return ctx, nil
 }
 
+// Just a helper for NewCtx().OpenInput() with options
+func NewInputCtxWithOption(filename string, ps ...Pair) (*FmtCtx, error) {
+	ctx := NewCtx()
+
+	if ctx.avCtx == nil {
+		return nil, errors.New(fmt.Sprintf("unable to allocate context"))
+	}
+
+	if err := ctx.OpenInput(filename, ps...); err != nil {
+		return nil, err
+	}
+
+	return ctx, nil
+}
+
 func NewInputCtxWithFormatName(filename, format string) (*FmtCtx, error) {
 	ctx := NewCtx()
 
@@ -216,7 +232,7 @@ func (this *FmtCtx) SetOptions(options []*Option) {
 	}
 }
 
-func (this *FmtCtx) OpenInput(filename string) error {
+func (this *FmtCtx) OpenInput(filename string, opts ...Pair) error {
 	var (
 		cfilename *C.char
 		options   *C.struct_AVDictionary = nil
@@ -228,6 +244,20 @@ func (this *FmtCtx) OpenInput(filename string) error {
 		cfilename = C.CString(filename)
 		defer C.free(unsafe.Pointer(cfilename))
 	}
+
+	for _, pair := range opts {
+		ckey := C.CString(pair.Key)
+		cval := C.CString(pair.Val)
+
+		if ret := C.av_dict_set(&options, ckey, cval, 0); int(ret) < 0 {
+			log.Printf("unable to set key '%v' value '%v', error: %s\n", pair.Key, pair.Val, AvError(int(ret)))
+		}
+
+		C.free(unsafe.Pointer(ckey))
+		C.free(unsafe.Pointer(cval))
+	}
+
+	//C.av_dict_set(&options, C.CString("rtsp_transport"), C.CString("tcp"), 0)
 
 	if averr := C.avformat_open_input(&this.avCtx, cfilename, nil, &options); averr < 0 {
 		return errors.New(fmt.Sprintf("Error opening input '%s': %s", filename, AvError(int(averr))))
