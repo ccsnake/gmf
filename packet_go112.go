@@ -19,6 +19,7 @@ import "C"
 
 import (
 	"fmt"
+	"reflect"
 	"unsafe"
 )
 
@@ -79,6 +80,15 @@ func (p *Packet) Pos() int64 {
 
 func (p *Packet) Data() []byte {
 	return C.GoBytes(unsafe.Pointer(p.avPacket.data), C.int(p.avPacket.size))
+}
+
+func (p *Packet) RawData() []byte {
+	var data []byte
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	sh.Data = uintptr(unsafe.Pointer(p.avPacket.data))
+	sh.Len = int(p.avPacket.size)
+	sh.Cap = int(p.avPacket.size)
+	return data
 }
 
 func (p *Packet) Clone() *Packet {
