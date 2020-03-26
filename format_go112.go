@@ -256,6 +256,7 @@ func (this *FmtCtx) OpenInput(filename string, opts ...Pair) error {
 		C.free(unsafe.Pointer(ckey))
 		C.free(unsafe.Pointer(cval))
 	}
+	defer C.av_dict_free(&options)
 
 	//C.av_dict_set(&options, C.CString("rtsp_transport"), C.CString("tcp"), 0)
 
