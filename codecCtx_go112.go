@@ -578,6 +578,9 @@ func (cc *CodecCtx) Decode(pkt *Packet) ([]*Frame, error) {
 			break
 		} else if ret < 0 {
 			frame.Free()
+			for _, f := range result {
+				f.Free()
+			}
 			return nil, AvError(ret)
 		}
 
