@@ -45,6 +45,37 @@ static char *gmf_sprintf_sdp(AVFormatContext *ctx) {
 	av_sdp_create(&ctx, 1, sdp, sizeof(char)*16384);
 	return sdp;
 }
+
+typedef struct{
+     time_t deadline;
+}interruptConetxt;
+
+static int interrupt_callback(void *p) {
+	interruptConetxt *ic = (interruptConetxt *)p;
+	if (ic->deadline > 0) {
+		if (time(NULL) > ic->deadline) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void gmf_set_open_input_timeout(AVFormatContext *ctx, int seconds) {
+	if (seconds <=0) return;
+
+	interruptConetxt *ic =(interruptConetxt*) av_malloc(sizeof(interruptConetxt));
+	ic->deadline = time(NULL) + seconds;
+
+	ctx->interrupt_callback.callback = interrupt_callback;
+	ctx->interrupt_callback.opaque = ic;
+}
+
+static void gmf_clean_open_input_timeout(AVFormatContext *ctx) {
+	void *p = ctx->interrupt_callback.opaque;
+	if (p) av_free(p);
+}
+
+
 */
 import "C"
 
@@ -501,8 +532,8 @@ func (this *FmtCtx) CloseOutput() {
 
 func (this *FmtCtx) Free() {
 	this.Close()
-
 	if this.avCtx != nil {
+		C.gmf_clean_open_input_timeout(this.avCtx)
 		C.avformat_free_context(this.avCtx)
 	}
 }
@@ -598,6 +629,11 @@ func (this *FmtCtx) SetProbeSize(v int64) {
 
 func (this *FmtCtx) GetProbeSize() int64 {
 	return int64(this.avCtx.probesize)
+}
+
+func (this *FmtCtx) SetTimeout(duration time.Duration) {
+	secs := duration / time.Second
+	C.gmf_set_open_input_timeout(this.avCtx, C.int(secs))
 }
 
 type OutputFmt struct {
