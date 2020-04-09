@@ -55,8 +55,9 @@ typedef struct{
 static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
 	if (ic && (ic->duration > 0)){
-		if (time(NULL) > (ic->last + ic->duration)) {
-		    av_log(NULL, AV_LOG_QUIET, "interrupt_callback: %s timeout\n", ic->ctx->url);
+		time_t deadline = ic->last + ic->duration;
+		if (time(NULL) > deadline) {
+		    av_log(NULL, AV_LOG_QUIET, "interrupt_callback: %s deadline %ld timeout\n", ic->ctx->url, deadline);
 			return 1;
 		}
 	}
