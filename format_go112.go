@@ -53,9 +53,9 @@ typedef struct{
 
 static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
-	if (ic->deadline > 0) {
+	if (ic && (ic->deadline > 0)){
 		if (time(NULL) > ic->deadline) {
-		    av_log(NULL, AV_LOG_VERBOSE, "%s time expired\n", ic->ctx->url);
+		    av_log(NULL, AV_LOG_INFO, "%s timeout\n", ic->ctx->url);
 			return 1;
 		}
 	}
@@ -74,6 +74,7 @@ static void gmf_set_open_input_timeout(AVFormatContext *ctx, int seconds) {
 }
 
 static void gmf_clean_open_input_timeout(AVFormatContext *ctx) {
+	ctx->interrupt_callback.callback = nil;
 	void *p = ctx->interrupt_callback.opaque;
 	if (p) av_free(p);
 }
