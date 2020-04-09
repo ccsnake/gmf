@@ -77,6 +77,7 @@ static void gmf_clean_open_input_timeout(AVFormatContext *ctx) {
 	ctx->interrupt_callback.callback = NULL;
 	void *p = ctx->interrupt_callback.opaque;
 	if (p) av_free(p);
+	ctx->interrupt_callback.opaque = NULL;
 }
 
 
