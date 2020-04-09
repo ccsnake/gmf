@@ -47,37 +47,55 @@ static char *gmf_sprintf_sdp(AVFormatContext *ctx) {
 }
 
 typedef struct{
-	time_t deadline;
+	time_t last;
+	int duration;
 	AVFormatContext * ctx;
 }interruptConetxt;
 
 static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
-	if (ic && (ic->deadline > 0)){
-		if (time(NULL) > ic->deadline) {
-		    av_log(NULL, AV_LOG_QUIET, "%s timeout\n", ic->ctx->url);
+	if (ic && (ic->duration > 0)){
+		if (time(NULL) > (ic->last + ic->duration)) {
+		    av_log(NULL, AV_LOG_QUIET, "interrupt_callback: %s timeout\n", ic->ctx->url);
 			return 1;
 		}
 	}
 	return 0;
 }
 
-static void gmf_set_open_input_timeout(AVFormatContext *ctx, int seconds) {
-	if (seconds <=0) return;
+static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
+	if (seconds == 0) {
+		if (ctx->interrupt_callback.opaque){
+			av_free(ctx->interrupt_callback.opaque);
+			ctx->interrupt_callback.opaque = NULL;
+		}
 
-	interruptConetxt *ic =(interruptConetxt*) av_malloc(sizeof(interruptConetxt));
+		ctx->interrupt_callback.callback = NULL;
+		return;
+	}
+
+	if (ctx->interrupt_callback.opaque == NULL){
+		ctx->interrupt_callback.opaque = (interruptConetxt*) av_malloc(sizeof(interruptConetxt));
+	}
+
+	if (ctx->interrupt_callback.callback == NULL){
+		ctx->interrupt_callback.callback = interrupt_callback;
+	}
+
+	interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
 	ic->ctx = ctx;
-	ic->deadline = time(NULL) + seconds;
+	ic->duration = seconds;
+	ic->last = time(NULL);
 
 	ctx->interrupt_callback.callback = interrupt_callback;
 	ctx->interrupt_callback.opaque = ic;
 }
 
-static void gmf_clean_open_input_timeout(AVFormatContext *ctx) {
-	ctx->interrupt_callback.callback = NULL;
-	void *p = ctx->interrupt_callback.opaque;
-	if (p) av_free(p);
-	ctx->interrupt_callback.opaque = NULL;
+static void gmf_update_interrupt_time(AVFormatContext *ctx) {
+	if (ctx->interrupt_callback.opaque){
+		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		ic->last = time(NULL);
+	}
 }
 
 
@@ -398,6 +416,7 @@ func (this *FmtCtx) GetNextPacket() (*Packet, error) {
 	pkt := NewPacket()
 
 	for {
+		C.gmf_update_interrupt_time(this.avCtx)
 		ret := int(C.av_read_frame(this.avCtx, &pkt.avPacket))
 
 		if AvErrno(ret) == syscall.EAGAIN {
@@ -424,6 +443,7 @@ func (this *FmtCtx) GetNewPackets() chan *Packet {
 		for {
 			p := NewPacket()
 
+			C.gmf_update_interrupt_time(this.avCtx)
 			if ret := C.av_read_frame(this.avCtx, &p.avPacket); int(ret) < 0 {
 				break
 			}
@@ -538,7 +558,7 @@ func (this *FmtCtx) CloseOutput() {
 func (this *FmtCtx) Free() {
 	this.Close()
 	if this.avCtx != nil {
-		C.gmf_clean_open_input_timeout(this.avCtx)
+		C.gmf_set_interrupt_timeout(this.avCtx, 0)
 		C.avformat_free_context(this.avCtx)
 	}
 }
@@ -638,7 +658,7 @@ func (this *FmtCtx) GetProbeSize() int64 {
 
 func (this *FmtCtx) SetTimeout(duration time.Duration) {
 	secs := duration / time.Second
-	C.gmf_set_open_input_timeout(this.avCtx, C.int(secs))
+	C.gmf_set_interrupt_timeout(this.avCtx, C.int(secs))
 }
 
 type OutputFmt struct {
