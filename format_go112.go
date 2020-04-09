@@ -47,13 +47,15 @@ static char *gmf_sprintf_sdp(AVFormatContext *ctx) {
 }
 
 typedef struct{
-     time_t deadline;
+	time_t deadline;
+	AVFormatContext * ctx;
 }interruptConetxt;
 
 static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
 	if (ic->deadline > 0) {
 		if (time(NULL) > ic->deadline) {
+		    av_log(NULL, AV_LOG_VERBOSE, "%s time expired\n", ic->ctx->url);
 			return 1;
 		}
 	}
@@ -64,6 +66,7 @@ static void gmf_set_open_input_timeout(AVFormatContext *ctx, int seconds) {
 	if (seconds <=0) return;
 
 	interruptConetxt *ic =(interruptConetxt*) av_malloc(sizeof(interruptConetxt));
+	ic->ctx = ctx;
 	ic->deadline = time(NULL) + seconds;
 
 	ctx->interrupt_callback.callback = interrupt_callback;
