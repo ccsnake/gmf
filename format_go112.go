@@ -47,8 +47,9 @@ static char *gmf_sprintf_sdp(AVFormatContext *ctx) {
 }
 
 typedef struct{
-	time_t last;
 	int duration;
+	int timeout;
+	time_t last;
 	AVFormatContext * ctx;
 }interruptConetxt;
 
@@ -57,6 +58,7 @@ static int interrupt_callback(void *p) {
 	if (ic && (ic->duration > 0)){
 		time_t deadline = ic->last + ic->duration;
 		if (time(NULL) > deadline) {
+			ic->timeout = 1;
 		    av_log(NULL, AV_LOG_QUIET, "interrupt_callback: %s deadline %ld timeout\n", ic->ctx->url, deadline);
 			return 1;
 		}
@@ -72,11 +74,13 @@ static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
 		}
 
 		ctx->interrupt_callback.callback = NULL;
+		av_log(NULL, AV_LOG_QUIET, "unset interrupt_callback: %s \n", ctx->url);
 		return;
 	}
 
 	if (ctx->interrupt_callback.opaque == NULL){
 		ctx->interrupt_callback.opaque = (interruptConetxt*) av_malloc(sizeof(interruptConetxt));
+		memset(ctx->interrupt_callback.opaque, 0, sizeof(interruptConetxt));
 	}
 
 	if (ctx->interrupt_callback.callback == NULL){
@@ -98,6 +102,15 @@ static void gmf_update_interrupt_time(AVFormatContext *ctx) {
 		ic->last = time(NULL);
 	}
 }
+
+static int gmf_interrupt_timeout(AVFormatContext *ctx) {
+	if (ctx->interrupt_callback.opaque){
+		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		return ic->timeout;
+	}
+	return 0;
+}
+
 
 
 */
@@ -313,10 +326,12 @@ func (this *FmtCtx) OpenInput(filename string, opts ...Pair) error {
 	}
 	defer C.av_dict_free(&options)
 
-	//C.av_dict_set(&options, C.CString("rtsp_transport"), C.CString("tcp"), 0)
-
 	if averr := C.avformat_open_input(&this.avCtx, cfilename, nil, &options); averr < 0 {
 		return errors.New(fmt.Sprintf("Error opening input '%s': %s", filename, AvError(int(averr))))
+	}
+
+	if int(C.gmf_interrupt_timeout(this.avCtx)) == 1 {
+		return errors.New(fmt.Sprintf("Error opening input '%s': timeout", filename))
 	}
 
 	if averr := C.avformat_find_stream_info(this.avCtx, nil); averr < 0 {
@@ -417,7 +432,6 @@ func (this *FmtCtx) GetNextPacket() (*Packet, error) {
 	pkt := NewPacket()
 
 	for {
-		C.gmf_update_interrupt_time(this.avCtx)
 		ret := int(C.av_read_frame(this.avCtx, &pkt.avPacket))
 
 		if AvErrno(ret) == syscall.EAGAIN {
@@ -444,7 +458,6 @@ func (this *FmtCtx) GetNewPackets() chan *Packet {
 		for {
 			p := NewPacket()
 
-			C.gmf_update_interrupt_time(this.avCtx)
 			if ret := C.av_read_frame(this.avCtx, &p.avPacket); int(ret) < 0 {
 				break
 			}
