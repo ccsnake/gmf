@@ -55,7 +55,7 @@ static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
 	if (ic && (ic->deadline > 0)){
 		if (time(NULL) > ic->deadline) {
-		    av_log(NULL, AV_LOG_INFO, "%s timeout\n", ic->ctx->url);
+		    av_log(NULL, AV_LOG_QUIET, "%s timeout\n", ic->ctx->url);
 			return 1;
 		}
 	}
