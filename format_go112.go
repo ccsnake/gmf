@@ -49,13 +49,14 @@ static char *gmf_sprintf_sdp(AVFormatContext *ctx) {
 typedef struct{
 	int duration;
 	int timeout;
+	int disabled;
 	time_t last;
 	AVFormatContext * ctx;
 }interruptConetxt;
 
 static int interrupt_callback(void *p) {
 	interruptConetxt *ic = (interruptConetxt *)p;
-	if (ic && (ic->duration > 0)){
+	if (ic&& !ic->disabled && (ic->duration > 0)){
 		time_t deadline = ic->last + ic->duration;
 		if (time(NULL) > deadline) {
 			ic->timeout = 1;
@@ -66,18 +67,25 @@ static int interrupt_callback(void *p) {
 	return 0;
 }
 
-static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
-	if (seconds == 0) {
-		if (ctx->interrupt_callback.opaque){
-			av_free(ctx->interrupt_callback.opaque);
-			ctx->interrupt_callback.opaque = NULL;
-		}
+static void gmf_disable_interrupt_timeout(AVFormatContext *ctx){
+	if (ctx->interrupt_callback.opaque){
+		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		ic->disabled = 1;
+	}
+}
 
-		ctx->interrupt_callback.callback = NULL;
-		av_log(NULL, AV_LOG_QUIET, "unset interrupt_callback: %s \n", ctx->url);
-		return;
+static void gmf_unset_interrupt(AVFormatContext *ctx) {
+	if (ctx->interrupt_callback.opaque){
+		av_free(ctx->interrupt_callback.opaque);
+		ctx->interrupt_callback.opaque = NULL;
 	}
 
+	ctx->interrupt_callback.callback = NULL;
+	av_log(NULL, AV_LOG_QUIET, "unset interrupt_callback: %s \n", ctx->url);
+	return;
+}
+
+static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
 	if (ctx->interrupt_callback.opaque == NULL){
 		ctx->interrupt_callback.opaque = (interruptConetxt*) av_malloc(sizeof(interruptConetxt));
 		memset(ctx->interrupt_callback.opaque, 0, sizeof(interruptConetxt));
@@ -334,8 +342,13 @@ func (this *FmtCtx) OpenInput(filename string, opts ...Pair) error {
 		return errors.New(fmt.Sprintf("Error opening input '%s': timeout", filename))
 	}
 
+	C.gmf_update_interrupt_time(this.avCtx)
 	if averr := C.avformat_find_stream_info(this.avCtx, nil); averr < 0 {
 		return errors.New(fmt.Sprintf("Unable to find stream info: %s", AvError(int(averr))))
+	}
+
+	if int(C.gmf_interrupt_timeout(this.avCtx)) == 1 {
+		return errors.New(fmt.Sprintf("Unable to find stream info '%s': timeout", filename))
 	}
 
 	return nil
@@ -572,7 +585,7 @@ func (this *FmtCtx) CloseOutput() {
 func (this *FmtCtx) Free() {
 	this.Close()
 	if this.avCtx != nil {
-		C.gmf_set_interrupt_timeout(this.avCtx, 0)
+		C.gmf_unset_interrupt(this.avCtx)
 		C.avformat_free_context(this.avCtx)
 	}
 }
@@ -672,7 +685,11 @@ func (this *FmtCtx) GetProbeSize() int64 {
 
 func (this *FmtCtx) SetTimeout(duration time.Duration) {
 	secs := duration / time.Second
-	C.gmf_set_interrupt_timeout(this.avCtx, C.int(secs))
+	if secs == 0 {
+		C.gmf_disable_interrupt_timeout(this.avCtx)
+	} else {
+		C.gmf_set_interrupt_timeout(this.avCtx, C.int(secs))
+	}
 }
 
 type OutputFmt struct {
