@@ -4,7 +4,7 @@ package gmf
 
 /*
 
-#cgo pkg-config: libavfilter
+#cgo pkg-config: libavfilter freetype2
 
 #include <stdio.h>
 #include <libavfilter/buffersink.h>
