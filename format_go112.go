@@ -52,10 +52,10 @@ typedef struct{
 	int disabled;
 	time_t last;
 	AVFormatContext * ctx;
-}interruptConetxt;
+}interruptContext;
 
 static int interrupt_callback(void *p) {
-	interruptConetxt *ic = (interruptConetxt *)p;
+	interruptContext *ic = (interruptContext *)p;
 	if (ic&& !ic->disabled && (ic->duration > 0)){
 		time_t deadline = ic->last + ic->duration;
 		if (time(NULL) > deadline) {
@@ -69,7 +69,7 @@ static int interrupt_callback(void *p) {
 
 static void gmf_disable_interrupt_timeout(AVFormatContext *ctx){
 	if (ctx->interrupt_callback.opaque){
-		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		interruptContext *ic = (interruptContext*) (ctx->interrupt_callback.opaque);
 		ic->disabled = 1;
 	}
 }
@@ -87,15 +87,15 @@ static void gmf_unset_interrupt(AVFormatContext *ctx) {
 
 static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
 	if (ctx->interrupt_callback.opaque == NULL){
-		ctx->interrupt_callback.opaque = (interruptConetxt*) av_malloc(sizeof(interruptConetxt));
-		memset(ctx->interrupt_callback.opaque, 0, sizeof(interruptConetxt));
+		ctx->interrupt_callback.opaque = (interruptContext*) av_malloc(sizeof(interruptContext));
+		memset(ctx->interrupt_callback.opaque, 0, sizeof(interruptContext));
 	}
 
 	if (ctx->interrupt_callback.callback == NULL){
 		ctx->interrupt_callback.callback = interrupt_callback;
 	}
 
-	interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+	interruptContext *ic = (interruptContext*) (ctx->interrupt_callback.opaque);
 	ic->ctx = ctx;
 	ic->duration = seconds;
 	ic->last = time(NULL);
@@ -106,14 +106,14 @@ static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
 
 static void gmf_update_interrupt_time(AVFormatContext *ctx) {
 	if (ctx->interrupt_callback.opaque){
-		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		interruptContext *ic = (interruptContext*) (ctx->interrupt_callback.opaque);
 		ic->last = time(NULL);
 	}
 }
 
 static int gmf_interrupt_timeout(AVFormatContext *ctx) {
 	if (ctx->interrupt_callback.opaque){
-		interruptConetxt *ic = (interruptConetxt*) (ctx->interrupt_callback.opaque);
+		interruptContext *ic = (interruptContext*) (ctx->interrupt_callback.opaque);
 		return ic->timeout;
 	}
 	return 0;
@@ -583,10 +583,14 @@ func (this *FmtCtx) CloseOutput() {
 }
 
 func (this *FmtCtx) Free() {
+	ic := this.avCtx.interrupt_callback.opaque
 	this.Close()
 	if this.avCtx != nil {
-		C.gmf_unset_interrupt(this.avCtx)
 		C.avformat_free_context(this.avCtx)
+	}
+
+	if ic != nil {
+		C.av_free(ic)
 	}
 }
 func (this *FmtCtx) Duration() float64 {
