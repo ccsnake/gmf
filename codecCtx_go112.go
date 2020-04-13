@@ -600,7 +600,7 @@ func (cc *CodecCtx) Encode(frames []*Frame, drain int) ([]*Packet, error) {
 		frames = append(frames, nil)
 	}
 
-	for _, frame := range frames {
+	for i, frame := range frames {
 		if frame == nil {
 			ret = int(C.avcodec_send_frame(cc.avCodecCtx, nil))
 		} else {
@@ -622,6 +622,7 @@ func (cc *CodecCtx) Encode(frames []*Frame, drain int) ([]*Packet, error) {
 		}
 		if frame != nil {
 			frame.Free()
+			frames[i] = nil
 		}
 	}
 
