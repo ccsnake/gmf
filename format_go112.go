@@ -74,20 +74,9 @@ static void gmf_disable_interrupt_timeout(AVFormatContext *ctx){
 	}
 }
 
-static void gmf_unset_interrupt(AVFormatContext *ctx) {
-	if (ctx->interrupt_callback.opaque){
-		av_free(ctx->interrupt_callback.opaque);
-		ctx->interrupt_callback.opaque = NULL;
-	}
-
-	ctx->interrupt_callback.callback = NULL;
-	av_log(NULL, AV_LOG_QUIET, "unset interrupt_callback: %s \n", ctx->url);
-	return;
-}
-
-static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
+static void gmf_set_interrupt_timeout(AVFormatContext *ctx, interruptContext *ic,int seconds) {
 	if (ctx->interrupt_callback.opaque == NULL){
-		ctx->interrupt_callback.opaque = (interruptContext*) av_malloc(sizeof(interruptContext));
+		ctx->interrupt_callback.opaque = (interruptContext*) ic;
 		memset(ctx->interrupt_callback.opaque, 0, sizeof(interruptContext));
 	}
 
@@ -95,7 +84,6 @@ static void gmf_set_interrupt_timeout(AVFormatContext *ctx, int seconds) {
 		ctx->interrupt_callback.callback = interrupt_callback;
 	}
 
-	interruptContext *ic = (interruptContext*) (ctx->interrupt_callback.opaque);
 	ic->ctx = ctx;
 	ic->duration = seconds;
 	ic->last = time(NULL);
@@ -161,10 +149,11 @@ const (
 type FmtCtx struct {
 	Filename string
 
-	avCtx    *C.struct_AVFormatContext
-	ofmt     *OutputFmt
-	streams  map[int]*Stream
-	customPb bool
+	avCtx            *C.struct_AVFormatContext
+	ofmt             *OutputFmt
+	streams          map[int]*Stream
+	customPb         bool
+	interruptContext C.interruptContext
 }
 
 func init() {
@@ -583,14 +572,9 @@ func (this *FmtCtx) CloseOutput() {
 }
 
 func (this *FmtCtx) Free() {
-	ic := this.avCtx.interrupt_callback.opaque
 	this.Close()
 	if this.avCtx != nil {
 		C.avformat_free_context(this.avCtx)
-	}
-
-	if ic != nil {
-		C.av_free(ic)
 	}
 }
 func (this *FmtCtx) Duration() float64 {
@@ -692,7 +676,7 @@ func (this *FmtCtx) SetTimeout(duration time.Duration) {
 	if secs == 0 {
 		C.gmf_disable_interrupt_timeout(this.avCtx)
 	} else {
-		C.gmf_set_interrupt_timeout(this.avCtx, C.int(secs))
+		C.gmf_set_interrupt_timeout(this.avCtx, &this.interruptContext, C.int(secs))
 	}
 }
 
